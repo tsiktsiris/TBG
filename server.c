@@ -34,20 +34,10 @@ struct clientdata PLAYER[CLIENTS-1];
 void *connection_handler(void *);
 void *game_progress(void *);
 
-int send_(int clientid, char *message)
-{
-   if(clientid != 0)
-    {
-      write(clientid , message , strlen(message));
-      return 0;
-    }
-    else
-    return -1;
-}
-
-int CLIENTS_CONNECTED = 0;
-int CLIENTS_READY = 0;
-int TH_STATUS = 0;
+int CLIENTS_CONNECTED = 0;  //Connected clients
+int CLIENTS_READY = 0;  //Players ready for game start (with nickname)
+int TH_STATUS = 0; //Thread status
+int OBJECTPOS = 4; //The object position (4 is the center)
 
 bool GAME_RUNNING = false;
 
@@ -56,7 +46,7 @@ int main(int argc , char *argv[])
     int idx, socket_desc, client_sock , c , *new_sock;
     struct sockaddr_in server , client;
 
-    int starting_bid = 100;
+    int starting_bid = 100; //Defines the starting money for the players
 
     printf("The Bidding Game 2013 - Dimitris Tsiktsiris\n");
     printf("Game Server (threaded) v0.1\n\n");
@@ -90,29 +80,24 @@ int main(int argc , char *argv[])
     c = sizeof(struct sockaddr_in);
 
 
-    //Accept and incoming connection
-    c = sizeof(struct sockaddr_in);
-
-
-
+    //Accept incoming connections
     while( (client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) )
     {
         if(CLIENTS_CONNECTED < CLIENTS)
         {
-            printf("[%d] Connection accepted from %s\n",client_sock,"mpam");
+            printf("[%d] Connection accepted\n",client_sock);
             pthread_t sniffer_thread;
             new_sock = malloc(1);
             *new_sock = client_sock;
 
             CLIENTS_CONNECTED++;
 
+            //Create a thread for the new client
             if( pthread_create( &sniffer_thread , NULL ,  connection_handler , (void*) new_sock) < 0)
             {
                 perror("could not create thread");
                 return 1;
             }
-            //Now join the thread , so that we dont terminate before the thread
-            //pthread_join( sniffer_thread , NULL);
 
             if (client_sock < 0)
             {
@@ -123,19 +108,20 @@ int main(int argc , char *argv[])
 
         }
 
-        if (CLIENTS_CONNECTED == CLIENTS)
+
+        if (CLIENTS_CONNECTED == CLIENTS) //Check if connected clients are enough to start a game
         {
             if(GAME_RUNNING == false)
             {
                 pthread_t game_thread;
                 sleep(1);
-                if( pthread_create( &game_thread , NULL ,  game_progress, (void*) starting_bid) < 0)
+                if( pthread_create( &game_thread , NULL ,  game_progress, (void*) starting_bid) < 0) //Create game thread
                 {
                     perror("could not create game thread");
                     return 1;
                 }
             }
-            else send_(client_sock,"FULL");
+            else send_(client_sock,"FULL"); //Inform client that server is full
         }
 
 
@@ -145,21 +131,26 @@ int main(int argc , char *argv[])
 }
 
 
-void *game_progress(void *bid)
+void *game_progress(void *bid) //Game progress thread
 {
     GAME_RUNNING = true;
-    while(CLIENTS_READY < CLIENTS_CONNECTED) sleep(1);
+    while(CLIENTS_READY < CLIENTS_CONNECTED) sleep(1); //Check if clients are ready
     printf("All players are ready! Creating game...");
 
+    int ADVANTAGE = 0;
     int idx;
+    char message[50];
 
     for(idx=0;idx<CLIENTS;idx++)
-     send_(PLAYER[idx].clientid,"STARTINGGAME 100");
+     send_(PLAYER[idx].clientid,"STARTINGGAME 100"); //Inform clients for the starting money
+
     printf("done!\n");
 
-    while (GAME_RUNNING)
+
+
+    while (GAME_RUNNING) //Game core loop
     {
-        if(CLIENTS_READY != CLIENTS)
+        if(CLIENTS_READY != CLIENTS) //Check if players are still connected, if not destroy the game
         {
             printf("The game has been abandoned! (player left)\n");
             GAME_RUNNING = false;
@@ -168,8 +159,89 @@ void *game_progress(void *bid)
 
 
 
+       //Wait for players to place a bid
+       bool bidready=false;
+
+       for(idx=0;idx<CLIENTS;idx++)
+       {
+           if(PLAYER[idx].isready==false)
+           {
+               bidready = true;
+               break;
+           }
+       }
 
 
+       //Processing loop
+       if(bidready==false)
+       {
+         printf("Processing results...\n");
+
+         //Find the maximum bid
+         int winnerbid = 0;
+
+         for(idx=0;idx<CLIENTS;idx++)
+         {
+             PLAYER[idx].isready=false;
+             if(PLAYER[idx].bid >winnerbid )
+              winnerbid = PLAYER[idx].bid;
+            else if (PLAYER[idx].bid == winnerbid)
+              winnerbid = -1;
+         }
+
+         //Find the winner of the round
+         int roundwinner = -1;
+
+         for(idx=0;idx<CLIENTS;idx++)
+         {
+             if(PLAYER[idx].bid == winnerbid )
+             {
+                 PLAYER[idx].position--;
+                 roundwinner = idx;
+             }
+             else
+              PLAYER[idx].position++;
+         }
+
+         printf("Announcing...\n");
+
+         //Announce the results to clients
+         sprintf(message, "OBJECT %d#P1 %d#P2 %d#ADVANTAGE %d#WIN %d",PLAYER[0].position,PLAYER[0].bid,PLAYER[1].bid,ADVANTAGE+1,roundwinner+1);
+
+         for(idx=0;idx<CLIENTS;idx++)
+         {
+             send_(PLAYER[idx].clientid , message);
+             PLAYER[idx].isready=false;
+         }
+
+         //If there is a winner, inform the clients
+         bool winner = false;
+
+         for(idx=0;idx<CLIENTS;idx++)
+         {
+             if(PLAYER[idx].position == 0 )
+             {
+                 winner = true;
+                 break;
+             }
+         }
+
+         if(winner==true)
+         {
+           sprintf(message, "WINNER %d",idx+1);
+
+           for(idx=0;idx<CLIENTS;idx++)
+           send_(PLAYER[idx].clientid,message);
+
+           printf("Winner is P%d !\n",idx+1);
+           printf("Destroying game...\n");
+           break;
+         }
+
+
+        ADVANTAGE++;
+        if(ADVANTAGE>=2) ADVANTAGE = 0;
+       }
     }
 
 }
@@ -187,28 +259,43 @@ void *connection_handler(void *socket_desc)
     char message[50] , client_message[RECV_BUFFER];
     char **tokens;
 
-    //Receive a message from client
+    //Receive the handshake from client
     read_size = recv(sock , client_message , RECV_BUFFER , 0);
-
 
     tokens = str_split(client_message,' ');
 
+    int CURRENT = CLIENTS_CONNECTED-1;
 
+    //Initialize player fields
     if(strcmp(tokens[0],"HELLO") == 0)
     {
-        PLAYER[CLIENTS_CONNECTED-1].clientid = sock;
-        PLAYER[CLIENTS_CONNECTED-1].bid = 0;
-        PLAYER[CLIENTS_CONNECTED-1].balance = 100;
-        strncpy(PLAYER[CLIENTS_CONNECTED-1].nickname,tokens[1],20);
-        PLAYER[CLIENTS_CONNECTED-1].position = 0;
-        //PLAYER[CLIENTS_CONNECTED-1].isready = false;
+        PLAYER[CURRENT].clientid = sock;
+        PLAYER[CURRENT].bid = 0;
+        PLAYER[CURRENT].balance = 100;
+        strncpy(PLAYER[CURRENT].nickname,tokens[1],20);
+        PLAYER[CURRENT].position = 4;
+        PLAYER[CURRENT].isready = false;
     }
 
     CLIENTS_READY++;
 
+    //Welcome the player
     sprintf(message, "WELCOME %d", CLIENTS_READY);
     send_(sock,message);
 
+    //Find the client index based on the socket
+    for(i=0;i<CLIENTS_CONNECTED;i++)
+    {
+      if(PLAYER[i].clientid==sock)
+      {
+        CURRENT=i;
+        break;
+       }
+    }
+
+
+
+    //Loop for checking & placing bids
     while(1)
     {
         for(i=0;i<RECV_BUFFER;i++) client_message[i] = 0;
@@ -223,18 +310,20 @@ void *connection_handler(void *socket_desc)
             {
                 int bid = atoi(tokens[1]);
 
-                if((bid>0) && (bid<=PLAYER[CLIENTS_CONNECTED-1].balance))
+                if((bid>0) && (bid<=PLAYER[CURRENT].balance))
                 {
-                    PLAYER[CLIENTS_CONNECTED-1].bid = bid;
-                    PLAYER[CLIENTS_CONNECTED-1].balance = PLAYER[CLIENTS_CONNECTED-1].balance - bid;
-                    PLAYER[CLIENTS_CONNECTED-1].isready = true;
-                    printf("client placed valid bid: %d\n",bid);
-                    send_(sock,"OKBID");
+                    PLAYER[CURRENT].bid = bid;
+                    PLAYER[CURRENT].balance = PLAYER[CURRENT].balance - bid;
+
+                    printf("Player %d placed valid bid: %d\n",CURRENT,bid);
+                    send_(PLAYER[CURRENT].clientid,"OKBID");
+
+                    PLAYER[CURRENT].isready = true;
                 }
                 else
                 {
                     printf("client placed invalid bid: %d\n",bid);
-                    send_(sock,"INVALIDBID");
+                    send_(PLAYER[CURRENT].clientid,"INVALIDBID");
                 }
 
 
