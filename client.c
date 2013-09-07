@@ -6,21 +6,16 @@
 //  Game Client v0.1
 ////////////////////////////////////////////////////////////
 
-#include "config.h"
+#include "shared.h"
 
 
 void draw_obj(int pos)
 {
     int x;
-
     printf("[P1]");
-
     for(x = 0 ; x < pos ; x++) printf("_ ");
-
     printf("O ");
-
     for(x=pos+1;x<9;x++) printf("_ ");
-
     printf("[P2]");
 }
 
