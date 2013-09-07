@@ -25,9 +25,23 @@
 #define E_MISC_NOTHREADING      106
 #define E_MISC_FULL             107
 
-#define RECV_BUFFER 2000
+#define RECV_BUFFER 50
 #define PORT 8888
 
+
+void send_all(int socket, void *buffer, size_t length)
+{
+    if(socket > 0)
+    {
+      size_t i = 0;
+      for (i = 0; i < length;i += send(socket, buffer, length - i,0));
+    }
+}
+
+int send_(int socket, char *message)
+{
+    send_all(socket , message , strlen(message));
+}
 
 char** str_split(char* a_str,const char a_delim)
 {
