@@ -15,15 +15,16 @@
 
 
 //Error constants
-#define E_NET_NOCONNECTION      100
-#define E_NET_NOSOCKET          101
-#define E_NET_SENDFAILED        102
-#define E_NET_RECVFAILED        103
-#define E_NET_BINDFAILED        104
-#define E_NET_CONNREFUSED       105
+#define E_NOCONNECTION      100
+#define E_NOSOCKET          101
+#define E_SENDFAILED        102
+#define E_RECVFAILED        103
+#define E_BINDFAILED        104
+#define E_CONNREFUSED       105
 
-#define E_MISC_NOTHREADING      106
-#define E_MISC_FULL             107
+#define E_NOTHREADING      106
+#define E_FULL             107
+#define E_RESUNKNOWN       108
 
 #define RECV_BUFFER 50
 #define PORT 8888
@@ -43,7 +44,14 @@ int send_(int socket, char *message)
     send_all(socket , message , strlen(message));
 }
 
-char** str_split(char* a_str,const char a_delim)
+int receive(int socket, char *buffer)
+{
+    size_t i = 0;
+    for(i=0;i<RECV_BUFFER;i++) buffer[i] = 0;
+    return recv(socket , buffer , RECV_BUFFER , 0);
+}
+
+char** str_split(char* a_str,const char a_delim) //Split a string based on a delimiter
 {
     char** result    = 0;
     size_t count     = 0;

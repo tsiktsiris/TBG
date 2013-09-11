@@ -11,7 +11,7 @@
 #include <pthread.h> //for threading , link with lpthread
 #include <string.h>
 
-#include "config.h"
+#include "shared.h"
 
 #define MAX_STRING_LEN 80
 #define CLIENTS 2
@@ -57,7 +57,7 @@ int main(int argc , char *argv[])
     if (socket_desc == -1)
     {
         printf("Unable to create socket");
-        return E_NET_NOSOCKET;
+        return E_NOSOCKET;
     }
 
     //Prepare the sockaddr_in structure
@@ -70,7 +70,7 @@ int main(int argc , char *argv[])
     {
         //print the error message
         perror("Bind failed. Error");
-        return E_NET_BINDFAILED;
+        return E_BINDFAILED;
     }
 
     //Listen
@@ -78,7 +78,6 @@ int main(int argc , char *argv[])
 
     puts("Waiting for incoming connections...");
     c = sizeof(struct sockaddr_in);
-
 
     //Accept incoming connections
     while( (client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) )
@@ -102,12 +101,9 @@ int main(int argc , char *argv[])
             if (client_sock < 0)
             {
                 perror("accept failed");
-                return E_NET_CONNREFUSED;
+                return E_CONNREFUSED;
             }
-
-
         }
-
 
         if (CLIENTS_CONNECTED == CLIENTS) //Check if connected clients are enough to start a game
         {
@@ -123,9 +119,6 @@ int main(int argc , char *argv[])
             }
             else send_(client_sock,"FULL"); //Inform client that server is full
         }
-
-
-
     }
     return 0;
 }
@@ -138,15 +131,13 @@ void *game_progress(void *bid) //Game progress thread
     printf("All players are ready! Creating game...");
 
     int ADVANTAGE = 0;
-    int idx;
+    size_t idx;
     char message[50];
-
+    sleep(1);
     for(idx=0;idx<CLIENTS;idx++)
      send_(PLAYER[idx].clientid,"STARTINGGAME 100"); //Inform clients for the starting money
 
     printf("done!\n");
-
-
 
     while (GAME_RUNNING) //Game core loop
     {
@@ -156,8 +147,6 @@ void *game_progress(void *bid) //Game progress thread
             GAME_RUNNING = false;
             return;
         }
-
-
 
        //Wait for players to place a bid
        bool bidready=false;
@@ -170,7 +159,6 @@ void *game_progress(void *bid) //Game progress thread
                break;
            }
        }
-
 
        //Processing loop
        if(bidready==false)
@@ -192,21 +180,37 @@ void *game_progress(void *bid) //Game progress thread
          //Find the winner of the round
          int roundwinner = -1;
 
-         for(idx=0;idx<CLIENTS;idx++)
+         if(winnerbid>0)
          {
-             if(PLAYER[idx].bid == winnerbid )
-             {
+            for(idx=0;idx<CLIENTS;idx++)
+            {
+                if(PLAYER[idx].bid == winnerbid )
+                {
                  PLAYER[idx].position--;
                  roundwinner = idx;
+                }
+                else
+                 PLAYER[idx].position++;
+            }
+         }
+         else
+         {
+             roundwinner=ADVANTAGE;
+             for(idx=0;idx<CLIENTS;idx++)
+             {
+                 if(idx==roundwinner)
+                 PLAYER[idx].position--;
+                 else
+                 PLAYER[idx].position++;
              }
-             else
-              PLAYER[idx].position++;
          }
 
-         printf("Announcing...\n");
+         OBJECTPOS = PLAYER[0].position;
 
+         printf("Announcing...\n");
+         sleep(2);
          //Announce the results to clients
-         sprintf(message, "OBJECT %d#P1 %d#P2 %d#ADVANTAGE %d#WIN %d",PLAYER[0].position,PLAYER[0].bid,PLAYER[1].bid,ADVANTAGE+1,roundwinner+1);
+         sprintf(message, "OBJECT %d#P1 %d#P2 %d#ADVANTAGE %d#WIN %d",OBJECTPOS,PLAYER[0].bid,PLAYER[1].bid,ADVANTAGE+1,roundwinner+1);
 
          for(idx=0;idx<CLIENTS;idx++)
          {
@@ -226,18 +230,17 @@ void *game_progress(void *bid) //Game progress thread
              }
          }
 
-         if(winner==true)
+         if(winner == true)
          {
            sprintf(message, "WINNER %d",idx+1);
 
-           for(idx=0;idx<CLIENTS;idx++)
+           for(idx=0; idx<CLIENTS; idx++)
            send_(PLAYER[idx].clientid,message);
 
-           printf("Winner is P%d !\n",idx+1);
+           printf("Winner is P%d !\n", idx+1);
            printf("Destroying game...\n");
            break;
          }
-
 
         ADVANTAGE++;
         if(ADVANTAGE>=2) ADVANTAGE = 0;
@@ -255,12 +258,13 @@ void *connection_handler(void *socket_desc)
 {
     //Get the socket descriptor
     int sock = *(int*)socket_desc;
-    int read_size, i;
+    int read_size;
+    size_t i;
     char message[50] , client_message[RECV_BUFFER];
     char **tokens;
 
     //Receive the handshake from client
-    read_size = recv(sock , client_message , RECV_BUFFER , 0);
+    read_size = receive(sock , client_message);
 
     tokens = str_split(client_message,' ');
 
@@ -293,14 +297,10 @@ void *connection_handler(void *socket_desc)
        }
     }
 
-
-
     //Loop for checking & placing bids
     while(1)
     {
-        for(i=0;i<RECV_BUFFER;i++) client_message[i] = 0;
-
-        read_size = recv(sock , client_message , RECV_BUFFER , 0);
+        read_size = receive(sock , client_message);
 
         if(read_size > 0)
         {
@@ -310,7 +310,7 @@ void *connection_handler(void *socket_desc)
             {
                 int bid = atoi(tokens[1]);
 
-                if((bid>0) && (bid<=PLAYER[CURRENT].balance))
+                if((bid>0) && (bid<=PLAYER[CURRENT].balance) && GAME_RUNNING == true)
                 {
                     PLAYER[CURRENT].bid = bid;
                     PLAYER[CURRENT].balance = PLAYER[CURRENT].balance - bid;
@@ -320,13 +320,15 @@ void *connection_handler(void *socket_desc)
 
                     PLAYER[CURRENT].isready = true;
                 }
+                else if (GAME_RUNNING == false)
+                {
+                    for(i=0;i<CLIENTS_READY;i++) send_(PLAYER[i].clientid,"QUIT");
+                }
                 else
                 {
                     printf("client placed invalid bid: %d\n",bid);
                     send_(PLAYER[CURRENT].clientid,"INVALIDBID");
                 }
-
-
             }
         }
 
