@@ -38,6 +38,7 @@ int CLIENTS_CONNECTED = 0;  //Connected clients
 int CLIENTS_READY = 0;  //Players ready for game start (with nickname)
 int TH_STATUS = 0; //Thread status
 int OBJECTPOS = 4; //The object position (4 is the center)
+int STARTING_BID = 100; //The starting bid
 
 bool GAME_RUNNING = false;
 
@@ -46,11 +47,18 @@ int main(int argc , char *argv[])
     int idx, socket_desc, client_sock , c , *new_sock;
     struct sockaddr_in server , client;
 
-    int starting_bid = 100; //Defines the starting money for the players
+    if ( argc != 4 )
+    {
+        printf("Server arguments incorrect\n");
+        exit(0);
+    }
+
+    STARTING_BID = atoi(argv[3]); //Defines the starting money for the players
 
     printf("The Bidding Game 2013 - Dimitris Tsiktsiris\n");
     printf("Game Server (threaded) v0.1\n\n");
 
+    printf("Starting bid: %d\n",STARTING_BID);
     //Create socket
     socket_desc = socket(AF_INET , SOCK_STREAM , 0);
 
@@ -62,8 +70,8 @@ int main(int argc , char *argv[])
 
     //Prepare the sockaddr_in structure
     server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons( PORT );
+    server.sin_addr.s_addr = inet_addr(argv[2]);
+    server.sin_port = htons( atoi(argv[1]) );
 
     //Bind
     if( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
@@ -111,7 +119,7 @@ int main(int argc , char *argv[])
             {
                 pthread_t game_thread;
                 sleep(1);
-                if( pthread_create( &game_thread , NULL ,  game_progress, (void*) starting_bid) < 0) //Create game thread
+                if( pthread_create( &game_thread , NULL ,  game_progress,(void*) STARTING_BID) < 0) //Create game thread
                 {
                     perror("could not create game thread");
                     return 1;
@@ -133,9 +141,12 @@ void *game_progress(void *bid) //Game progress thread
     int ADVANTAGE = 0;
     size_t idx;
     char message[50];
+    //sleep(1);
+
+    sprintf(message,"STARTINGGAME %d",STARTING_BID);
     sleep(1);
     for(idx=0;idx<CLIENTS;idx++)
-     send_(PLAYER[idx].clientid,"STARTINGGAME 100"); //Inform clients for the starting money
+     send_(PLAYER[idx].clientid,message); //Inform clients for the starting money
 
     printf("done!\n");
 
