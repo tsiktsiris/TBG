@@ -54,6 +54,12 @@ int main(int argc , char *argv[])
 
     setbuf(stdout, NULL); //Disable output buffering
 
+    if ( argc != 3 )
+    {
+        printf("Client arguments incorrect\n");
+        exit(0);
+    }
+
     printf("The Bidding Game 2013 - Dimitris Tsiktsiris\n");
     printf("Game Client v0.1\n\n");
 
@@ -66,9 +72,9 @@ int main(int argc , char *argv[])
         return E_NOSOCKET;
     }
 
-    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server.sin_addr.s_addr = inet_addr(argv[2]);
     server.sin_family = AF_INET;
-    server.sin_port = htons(PORT);
+    server.sin_port = htons(atoi(argv[1]));
 
     //Connect to remote server
     if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0)
