@@ -212,6 +212,13 @@ void *game_progress(void *bid) //Game progress thread
          //Announce the results to clients
          sprintf(message, "OBJECT %d#P1 %d#P2 %d#ADVANTAGE %d#WIN %d",OBJECTPOS,PLAYER[0].bid,PLAYER[1].bid,ADVANTAGE+1,roundwinner+1);
 
+        //Writes scores to a file
+        FILE *file;
+        file = fopen("scores.txt","a+");
+        for(idx=0;idx<CLIENTS;idx++)
+        fprintf(file,"%s placed bid: %d \n",PLAYER[idx].nickname,PLAYER[idx].bid);
+        fclose(file);
+
          for(idx=0;idx<CLIENTS;idx++)
          {
              send_(PLAYER[idx].clientid , message);
@@ -232,8 +239,14 @@ void *game_progress(void *bid) //Game progress thread
 
          if(winner == true)
          {
-           sprintf(message, "WINNER %d",idx+1);
+           //Write the winner to file
+           FILE *file;
+           file = fopen("scores.txt","a+");
+           fprintf(file,"Player %s won! \n",PLAYER[idx].nickname);
+           fclose(file);
 
+           //Inform the clients for the winner
+           sprintf(message, "WINNER %d",idx+1);
            for(idx=0; idx<CLIENTS; idx++)
            send_(PLAYER[idx].clientid,message);
 
