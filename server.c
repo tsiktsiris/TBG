@@ -55,7 +55,7 @@ int main(int argc , char *argv[])
 
     STARTING_BID = atoi(argv[3]); //Defines the starting money for the players
 
-    printf("The Bidding Game 2013 - Dimitris Tsiktsiris\n");
+    printf("The Bidding Game 2013\n");
     printf("Game Server (threaded) v0.1\n\n");
 
     printf("Starting bid: %d\n",STARTING_BID);
@@ -245,6 +245,13 @@ void *game_progress(void *bid) //Game progress thread
              {
                  winner = true;
                  break;
+             }
+            //In case a player has zero balance then the other is the winner
+             if(PLAYER[idx].balance == 0 )
+             {
+                    idx = !idx;
+                    winner = true;
+                    break;
              }
          }
 
